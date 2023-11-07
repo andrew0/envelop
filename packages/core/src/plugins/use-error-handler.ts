@@ -1,16 +1,33 @@
-import { DefaultContext, ExecutionResult, Plugin, TypedExecutionArgs } from '@envelop/types';
+import {
+  DefaultContext,
+  ExecutionResult,
+  OnPluginInitEventPayload,
+  Plugin,
+  TypedExecutionArgs,
+} from '@envelop/types';
 import { handleStreamOrSingleExecutionResult } from '../utils.js';
 import { isGraphQLError, SerializableGraphQLErrorLike } from './use-masked-errors.js';
 
-export type ErrorHandler = ({
+export type ErrorHandler<ContextType extends Record<string, any> = DefaultContext> = ({
   errors,
   context,
   phase,
 }: {
   errors: readonly Error[] | readonly SerializableGraphQLErrorLike[];
-  context: Readonly<DefaultContext>;
-  phase: 'parse' | 'validate' | 'context' | 'execution';
-}) => void;
+} & (
+  | {
+      context: Readonly<ContextType>;
+      phase: 'parse' | 'validate';
+    }
+  | {
+      context: OnPluginInitEventPayload<ContextType>;
+      phase: 'context';
+    }
+  | {
+      context: TypedExecutionArgs<ContextType>;
+      phase: 'execution';
+    }
+)) => void;
 
 type ErrorHandlerCallback<ContextType> = {
   result: ExecutionResult;
@@ -18,7 +35,7 @@ type ErrorHandlerCallback<ContextType> = {
 };
 
 const makeHandleResult =
-  <ContextType extends Record<any, any>>(errorHandler: ErrorHandler) =>
+  <ContextType extends Record<any, any>>(errorHandler: ErrorHandler<ContextType>) =>
   ({ result, args }: ErrorHandlerCallback<ContextType>) => {
     if (result.errors?.length) {
       errorHandler({ errors: result.errors, context: args, phase: 'execution' });
@@ -26,7 +43,7 @@ const makeHandleResult =
   };
 
 export const useErrorHandler = <ContextType extends Record<string, any>>(
-  errorHandler: ErrorHandler,
+  errorHandler: ErrorHandler<ContextType>,
 ): Plugin<ContextType> => {
   const handleResult = makeHandleResult<ContextType>(errorHandler);
   return {
